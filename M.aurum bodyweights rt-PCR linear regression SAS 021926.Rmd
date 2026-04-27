@@ -1,0 +1,2640 @@
+---
+title: "M.aurum"
+author: "Saydie Sago"
+date: "2026-02-19"
+output: html_document
+---
+######################################################################
+## Updated code that Saydie Sago used for her other projects and applied to this study. From M.aurum Project Social Behavior Testing JSE, Bodyweights, Hippocampcal, Choroid Plexus rt-PCR, Linear Regression (Il6 vs. JSE, Cd169 vs. JSE)  with all animals 110120, dervied from STHDA (Statistical tool for high-throughput data analysis). It was updated 091625. This study is looking at the following; average body weights on day -21, -14, -7, JSE/IS behavior, various gene expression like Il6, Il1b, Tnf, Il4, and Cd169 in the R. hippocampus and choriod plexus, and linear regression models looking at Il6/Cd169 vs. JSE in R. Hippocampi and Choroid Plexus.  
+
+#References
+#Hex codes for M.aurum publication: BBS/HC = #B3E1F0, BBS/IS = #148CBA, Maurum/HC = #98E0B1, Maurum/IS = #21A951
+
+##############################################################################
+# Installing and Loading Packages 
+#############################################################################
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(echo = TRUE)
+skoden_packages <- c("tidyr", "ggplot2", "dplyr", "ggpubr", "outliers", "Rmisc", "car", "readxl", "multcomp", "RColorBrewer", "tidyverse", "rstatix", "agricolae", "purrr", "emmeans", "knitr", "kableExtra", "lme4", "lmerTest", "multcompView", "pracma", "DescTools", "svglite")
+
+lapply(skoden_packages, library, character.only=TRUE)
+```
+################################################################################
+# Behavior- JSE/IS
+################################################################################
+## Importing behavior data from Excel ##########################
+```{r}
+JSE <- read_excel('Maurum_data/Behavior/JSE.xlsx') 
+```
+## Statistical Analysis: Grubbs, Sharpio's and Bartlett's
+```{r}
+grubbs.test(JSE$baseline[JSE$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+# 224.0105 is an outlier p-value = 0.0001225
+grubbs.test(JSE$baseline[JSE$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+
+shapiro.test(JSE$baseline[JSE$Treatment=="bbs"])
+shapiro.test(JSE$baseline[JSE$Treatment=="maurum"])
+
+bartlett.test(baseline ~ Treatment=="bbs", JSE)
+bartlett.test(baseline ~ Treatment=="maurum", JSE)
+
+```
+## Statistical Analysis: ANOVA and Fisher's LSD Post-Hoc
+```{r}
+JSE_aov <- aov(baseline ~ Treatment * Condition, data = JSE)
+summary(JSE_aov)
+# Since this there is significance we need to run a post-hoc, Fisher's LSD, Lowry likes this test since it's less conservative like Tukey's
+JSE_LSD <- LSD.test(JSE_aov, "Condition", p.adj = "none")
+JSE_LSD
+
+lsd_JSE <- pairwise.t.test(JSE$baseline, interaction(JSE$Condition, JSE$Treatment), p.adjust.method = "none") 
+
+# Good visual of post-hocs, for Lowry if he requests it 
+as.data.frame(lsd_JSE$p.value) %>%
+    kbl(caption= "Fisher LSD p-value: compare condition and treatment for JSE")%>% kable_classic()
+```
+## Figure and Saving File 
+```{r}
+JSE$Condition <- as.factor(JSE$Condition)
+JSE$Treatment <- as.factor(JSE$Treatment)
+JSE$Group <- factor(JSE$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+fig_JSE <- JSE %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(baseline)),
+    mean = mean(baseline, na.rm = TRUE),
+    sd = sd(baseline, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+max_y_baseline <- max(fig_JSE$mean + fig_JSE$se) #formatting for asterisk
+bracket_y_baseline <- max_y_baseline + 10 #formatting for asterisk
+bracket_bottom_baseline <- max_y_baseline + 5 #formating for asterisk
+star_y_baseline <- max_y_baseline + 11 #formatting for asterisk
+
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951")
+
+JSE_plot <- ggplot(data = fig_JSE, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+  scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+     annotate("segment", x = 1, xend = 2, y = bracket_y_baseline, yend = bracket_y_baseline, linewidth = 0.5) +
+     annotate("segment", x = 1, xend = 1, y = bracket_bottom_baseline, yend = bracket_y_baseline, linewidth = 0.5) +
+     annotate("segment", x = 2, xend = 2, y = bracket_bottom_baseline, yend = bracket_y_baseline, linewidth = 0.5) +
+     annotate("text", x = 1.5, y = star_y_baseline, label = "**", size = 10, fontface = "bold") +
+  
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 22),
+    legend.text = element_text(size = 18),
+    legend.key.width = unit(1.2, "cm"),
+    legend.key.height = unit(0.8, "cm")
+  ) +
+  xlab("") +
+  ylab(expression(atop(" Time Exploring Juvenile", "% of BBS/HC control")))
+JSE_plot
+
+ggsave(
+  filename = "Maurum_Data/R_figures/behavior.svg",
+  plot = JSE_plot,
+  device = svglite::svglite,
+  units = "in",
+  width = 16,
+  height = 8
+)
+
+ggsave(
+  filename = "Maurum_Data/R_figures/behavior.jpeg",
+  plot = JSE_plot,
+  device = "jpeg",
+  dpi = 600,
+  width = 16,
+  height = 8
+)
+```
+
+################################################################################
+# Bodyweights- Day -21, -14, and -7
+################################################################################
+## Importing bodyweight data from Excel ##################
+```{r}
+bodyweight <- read_excel('Maurum_data/bodyweights.xlsx') 
+
+bodyweight <- bodyweight %>%
+  mutate(
+    across(starts_with("Day"), ~ as.numeric(gsub("[^0-9.-]", "", as.character(.))))
+  )
+
+weight_long <- bodyweight %>%
+  pivot_longer(
+    cols = starts_with("Day"),
+    names_to = "timepoint",
+    values_to = "weight"
+  ) %>%
+  mutate(
+    timepoint = factor(
+      timepoint,
+      levels = c("Day-21", "Day-14", "Day-7")
+    )
+  )
+```
+## Statistical Analysis: Grubbs, Sharpio's and Bartlett's
+```{r}
+grubbs.test(na.omit(bodyweight$`Day-21`[bodyweight$Condition=="bbs"]))
+grubbs.test(na.omit(bodyweight$`Day-21`[bodyweight$Condition=="maurum"]))
+grubbs.test(na.omit(bodyweight$`Day-14`[bodyweight$Condition=="bbs"]))
+grubbs.test(na.omit(bodyweight$`Day-14`[bodyweight$Condition=="maurum"]))
+grubbs.test(na.omit(bodyweight$`Day-7`[bodyweight$Condition=="bbs"]))
+grubbs.test(na.omit(bodyweight$`Day-7`[bodyweight$Condition=="maurum"]))
+
+shapiro.test(bodyweight$`Day-21`[bodyweight$Condition=="bbs"])
+shapiro.test(bodyweight$`Day-21`[bodyweight$Condition=="maurum"])
+shapiro.test(bodyweight$`Day-14`[bodyweight$Condition=="bbs"])
+shapiro.test(bodyweight$`Day-14`[bodyweight$Condition=="maurum"])
+shapiro.test(bodyweight$`Day-7`[bodyweight$Condition=="bbs"])
+shapiro.test(bodyweight$`Day-7`[bodyweight$Condition=="maurum"])
+# not normal, but bartlett's is normal p-value = 0.01604
+bartlett.test(`Day-21` ~ Condition=="bbs", bodyweight)
+bartlett.test(`Day-21` ~ Condition=="maurum", bodyweight)
+bartlett.test(`Day-14` ~ Condition=="bbs", bodyweight)
+bartlett.test(`Day-14` ~ Condition=="maurum", bodyweight)
+bartlett.test(`Day-7` ~ Condition=="bbs", bodyweight)
+bartlett.test(`Day-7` ~ Condition=="maurum", bodyweight)
+```
+## Statistical Analysis: Linear Mixed Model and Fisher's LSD Post-Hoc
+```{r}
+lm(weight ~ Treatment, data = weight_long ) %>%
+    summary()
+
+model_bw <- lmer(weight ~ Group * timepoint + (1 | ID), data = weight_long)
+anova(model_bw)
+#significance for timepoint p-value: <2e-16 
+
+emm_bw <- emmeans(model_bw, ~ timepoint | Group)
+
+lsd_bw <- contrast(emm_bw, method = "pairwise", adjust = "none")
+lsd_bw
+
+bw_aov <- aov(weight ~ Group + timepoint, data = weight_long)
+summary(bw_aov)
+
+# Fisher LSD: compare Control vs. STZ for each timepoints
+# most powerful posthoc test. We only make plain comparison (pairwise comparison)
+lsd_bw_2 <- pairwise.t.test(weight_long$weight, interaction(weight_long$timepoint, weight_long$Treatment), p.adjust.method = "none") 
+
+# Good visual of post-hocs, for Lowry if he requests it 
+as.data.frame(lsd_bw_2$p.value) %>%
+    kbl(caption= "Fisher LSD p-value: compare Maurum body weight for each timepoints")%>% kable_classic()
+
+# We want to compare the treatment groups to the control (BBS/HC) since we have been doing this for the rest of the figures and stats. Running a Dunnett's test will accomplish this comparsion. You might need to install DescTools package to run this
+
+
+DunnettTest(x=weight_long$weight, g= weight_long$Group)
+```
+## Figures and Saving Files
+```{r}
+bodyweight$Condition <- as.factor(bodyweight$Condition)
+bodyweight$Treatment <- as.factor(bodyweight$Treatment)
+bodyweight$Group <- factor(bodyweight$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+
+weight_long <- weight_long %>%
+  dplyr::mutate(
+    Group = factor(Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS")))
+
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951")
+
+fig_bodyweights_df <- weight_long %>%
+  dplyr::group_by(timepoint, Group) %>%
+  dplyr::summarise(
+    n_weight = sum(!is.na(weight)),
+    mean_weight = mean(weight, na.rm = TRUE),
+    se_weight = sd(weight, na.rm = TRUE) / sqrt(sum(!is.na(weight))),
+    .groups = "drop"
+  )
+
+get_sig_stars_vs_control <- function(df) {
+  
+  df <- df %>%
+    dplyr::filter(!is.na(weight)) %>%
+    dplyr::mutate(Group = droplevels(Group))
+  
+  fit <- lm(weight ~ Group, data = df)
+  emm <- emmeans::emmeans(fit, ~ Group)
+  
+  dunnett_res <- as.data.frame(
+    emmeans::contrast(emm, method = "trt.vs.ctrl", ref = "BBS/HC", adjust = "dunnett")
+  )
+  
+  dunnett_res <- dunnett_res %>%
+    dplyr::mutate(
+      Group = trimws(sub(" - BBS/HC", "", contrast)),
+      label = dplyr::case_when(
+        p.value < 0.001 ~ "***",
+        p.value < 0.01  ~ "**",
+        p.value < 0.05  ~ "*",
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    dplyr::filter(!is.na(label)) %>%
+    dplyr::select(Group, label)
+  
+  return(dunnett_res)
+}
+
+stars_all <- weight_long %>%
+  dplyr::group_by(timepoint) %>%
+  dplyr::group_modify(~ {
+    out <- get_sig_stars_vs_control(.x)
+    out$timepoint <- unique(.x$timepoint)
+    out
+  }) %>%
+  dplyr::ungroup()
+
+stars_plot_df <- fig_bodyweights_df %>%
+  dplyr::inner_join(stars_all, by = c("timepoint", "Group")) %>%
+  dplyr::mutate(
+    y_pos = mean_weight + se_weight + dplyr::case_when(
+      Group == "BBS/IS"    ~ 1.5,
+      Group == "M. aurum/HC" ~ 2.5,
+      Group == "M. aurum/IS" ~ 3.5,
+      TRUE ~ 1.5
+    )
+  )
+
+fig_bodyweights <- ggplot(
+  fig_bodyweights_df,
+  aes(x = timepoint, y = mean_weight, color= Group, group = Group)) + 
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  geom_errorbar(
+    aes(ymin = mean_weight - se_weight, ymax = mean_weight + se_weight),
+    width = 0.08,
+    linewidth = 0.6
+  ) +
+  geom_text(
+    data = stars_plot_df,
+    aes(x = timepoint, y = y_pos, label = label),
+    inherit.aes = FALSE,
+    color = "black",
+    size = 8,
+    fontface = "bold"
+  ) +
+  scale_color_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+     )
+    ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0.02, 0.18))
+  ) +
+  coord_cartesian(clip = "off") +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 23),
+    legend.title = element_text(size = 40),
+    legend.text = element_text(size = 30),
+    legend.position = "right",
+    plot.margin = margin(10, 20, 10, 10)
+  ) +
+  labs(
+    x = "Timepoint",
+    y = "Average Body Weight (g)",
+    color = "Group"
+  )
+
+fig_bodyweights
+
+ggsave(
+  filename = "Maurum_Data/R_figures/bodyweights.jpeg",
+  plot = fig_bodyweights,
+  device = "jpeg",
+  dpi = 600,
+  width = 16,
+  height = 8
+)
+
+ggsave(
+  filename = "Maurum_Data/R_figures/bodyweights.svg",
+  plot = fig_bodyweights,
+  device = svglite::svglite,
+  units = "in",
+  width = 16,
+  height = 8
+)
+```
+
+
+
+
+################################################################################
+# Il6, Il4, Il1b, and Tnf Expression- R. Hippocampus
+################################################################################
+## Importing gene expression data from Excel ######################
+```{r}
+Il6<- read_excel("Maurum_data/R.Hippocampus/Il6.xlsx")
+Il4<- read_excel("Maurum_data/R.Hippocampus/Il4.xlsx")
+Il1b<- read_excel("Maurum_data/R.Hippocampus/Il1b.xlsx")
+Tnf<- read_excel("Maurum_data/R.Hippocampus/Tnf.xlsx")
+```
+
+## Statistical Analysis: Grubbs, Sharpio's, and Bartlett's
+```{r}
+grubbs.test(Il6$mRNA[Il6$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il6$mRNA[Il6$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il4$mRNA[Il4$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il4$mRNA[Il4$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il1b$mRNA[Il1b$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il1b$mRNA[Il1b$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Tnf$mRNA[Tnf$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Tnf$mRNA[Tnf$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+
+shapiro.test(Il6$mRNA[Il6$Treatment=="bbs"])
+shapiro.test(Il6$mRNA[Il6$Treatment=="maurum"])
+shapiro.test(Il4$mRNA[Il4$Treatment=="bbs"])
+shapiro.test(Il4$mRNA[Il4$Treatment=="maurum"])
+shapiro.test(Il1b$mRNA[Il1b$Treatment=="bbs"])
+shapiro.test(Il1b$mRNA[Il1b$Treatment=="maurum"])
+shapiro.test(Tnf$mRNA[Tnf$Treatment=="bbs"])
+shapiro.test(Tnf$mRNA[Tnf$Treatment=="maurum"])
+
+bartlett.test(mRNA ~ Treatment=="bbs", Il6)
+bartlett.test(mRNA ~ Treatment=="maurum", Il6)
+bartlett.test(mRNA ~ Treatment=="bbs", Il4)
+bartlett.test(mRNA ~ Treatment=="maurum", Il4)
+bartlett.test(mRNA ~ Treatment=="bbs", Il1b)
+bartlett.test(mRNA ~ Treatment=="maurum", Il1b)
+bartlett.test(mRNA ~ Treatment=="bbs", Tnf)
+bartlett.test(mRNA ~ Treatment=="maurum", Tnf)
+```
+
+## Statistical Analysis: ANOVA and Post-Hocs
+```{r}
+Il6_aov <- aov(mRNA ~ Treatment * Condition, data = Il6)
+summary(Il6_aov)
+# Since this there is significance we need to run a post-hoc, Fisher's LSD, Lowry likes this test since it's less conservative like Tukey's
+Il6_LSD <- LSD.test(Il6_aov, "Condition", p.adj = "none")
+Il6_LSD
+
+lsd_Il6 <- pairwise.t.test(Il6$mRNA, interaction(Il6$Condition, Il6$Treatment), p.adjust.method = "none") 
+
+# Good visual of post-hocs, for Lowry if he requests it 
+as.data.frame(lsd_Il6$p.value) %>%
+    kbl(caption= "Fisher LSD p-value: compare condition and treatment for Maurum dataset")%>% kable_classic()
+
+Il4_aov <-aov(mRNA ~ Treatment * Condition, data = Il4)
+summary(Il4_aov)
+
+Il1b_aov <-aov(mRNA ~ Treatment * Condition, data = Il1b)
+summary(Il1b_aov)
+
+Tnf_aov <- aov(mRNA ~ Treatment * Condition, data = Tnf)
+summary(Tnf_aov)
+```
+## Figures and Saving Files
+```{r}
+Il6$Condition <- as.factor(Il6$Condition)
+Il6$Treatment <- as.factor(Il6$Treatment)
+Il6$Group <- factor(Il6$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+fig_Il6 <- Il6 %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(mRNA)),
+    mean = mean(mRNA, na.rm = TRUE),
+    sd = sd(mRNA, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+max_y <- max(fig_Il6$mean + fig_Il6$se) #formatting for asterisk
+bracket_y <- max_y + 0.65 #formatting for asterisk
+bracket_bottom <- max_y + 0.50 #formating for asterisk
+star_y <- max_y + 0.75 #formatting for asterisk
+
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951")
+
+Il6_plot <- ggplot(data = fig_Il6, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+    scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+     annotate("segment", x = 1, xend = 2, y = bracket_y, yend = bracket_y, linewidth = 0.5) +
+     annotate("segment", x = 1, xend = 1, y = bracket_bottom, yend = bracket_y, linewidth = 0.5) +
+     annotate("segment", x = 2, xend = 2, y = bracket_bottom, yend = bracket_y, linewidth = 0.5) +
+     annotate("text", x = 1.5, y = star_y, label = "*", size = 10, fontface = "bold") +
+  
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+   legend.title = element_text(size = 20),
+    legend.text = element_text(size = 18),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Il6))) +
+  xlab("") +
+  ylab(expression(atop(" Relative hippocampal " * italic(Il6) * " mRNA Expression")))
+      #"(" * 2^{-Delta * Delta * C[q]} * " Values)")))
+Il6_plot
+   
+
+fig_Il4 <- Il4 %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(mRNA)),
+    mean = mean(mRNA, na.rm = TRUE),
+    sd = sd(mRNA, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+Il4_plot <- ggplot(data = fig_Il4, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+ scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+  
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 20),
+    legend.text = element_text(size = 18),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Il4))) +
+  xlab("") +
+  ylab(expression(atop(" Relative hippocampal " * italic(Il4) * " mRNA Expression")))
+      #"(" * 2^{-Delta * Delta * C[q]} * " Values)")))
+Il4_plot    
+    
+
+fig_Il1b <- Il1b %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(mRNA)),
+    mean = mean(mRNA, na.rm = TRUE),
+    sd = sd(mRNA, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+Il1b_plot <- ggplot(data = fig_Il1b, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+  scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+  
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+  legend.title = element_text(size = 20),
+    legend.text = element_text(size = 18),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Il1b))) +
+  xlab("") +
+  ylab(expression(atop(" Relative hippocampal " * italic(Il1b) * " mRNA Expression")))
+      #"(" * 2^{-Delta * Delta * C[q]} * " Values)")))
+Il1b_plot
+
+Tnf$Condition <- as.factor(Tnf$Condition)
+Tnf$Treatment <- as.factor(Tnf$Treatment)
+Tnf$Group <- factor(Tnf$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+
+fig_Tnf <- Tnf %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(mRNA)),
+    mean = mean(mRNA, na.rm = TRUE),
+    sd = sd(mRNA, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+
+Tnf_plot <- ggplot(data = fig_Tnf, aes (x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+  scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+   legend.title = element_text(size = 20),
+    legend.text = element_text(size = 18),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Tnf))) +
+  xlab("") +
+  ylab(expression(atop(" Relative hippocampal " * italic(Tnf) * " mRNA Expression")))
+      #"(" * 2^{-Delta * Delta * C[q]} * " Values)")))
+Tnf_plot
+
+maurum_genes <- ggarrange(Il6_plot, Il4_plot,
+                             Il1b_plot, Tnf_plot,
+                             ncol = 2, nrow = 2,
+                             labels = c("A","B","C","D"),
+                             widths = c(1,1),
+                             heights = c(0.25,0.25),
+                             font.label = list(size = 30, face = "bold"),
+                             common.legend = TRUE,
+                             legend = "right")
+
+# merge plots and save
+maurum_genes
+ggsave(maurum_genes, filename = "Maurum_data/R_figures/maurum_inflammatory.jpeg", device = "jpeg", dpi = 600, width = 20, height = 15)
+
+ggsave(
+  filename = "Maurum_Data/R_figures/maurum_inflammatory.svg",
+  plot = maurum_genes,
+  device = svglite::svglite,
+  units = "in",
+  width = 20,
+  height = 15
+)
+```
+
+## Importing % of control data from Excel #########################
+```{r}
+Il6_control<- read_excel("Maurum_data/R.Hippocampus/Il6_control.xlsx")
+Il4_control<- read_excel("Maurum_data/R.Hippocampus/Il4_control.xlsx")
+Il1b_control<- read_excel("Maurum_data/R.Hippocampus/Il1b_control.xlsx")
+Tnf_control<- read_excel("Maurum_data/R.Hippocampus/Tnf_control.xlsx")
+```
+
+## Statistical Analysis: Grubbs, Sharpio's, and Bartlett's
+```{r}
+grubbs.test(Il6_control$control[Il6_control$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il6_control$control[Il6_control$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il4_control$control[Il4_control$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il4_control$control[Il4_control$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il1b_control$control[Il1b_control$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il1b_control$control[Il1b_control$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Tnf_control$control[Tnf_control$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Tnf_control$control[Tnf_control$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+
+shapiro.test(Il6_control$control[Il6_control$Treatment=="bbs"])
+shapiro.test(Il6_control$control[Il6_control$Treatment=="maurum"])
+shapiro.test(Il4_control$control[Il4_control$Treatment=="bbs"])
+shapiro.test(Il4_control$control[Il4_control$Treatment=="maurum"])
+# not normal p-value = 0.003211
+shapiro.test(Il1b_control$control[Il1b_control$Treatment=="bbs"])
+shapiro.test(Il1b_control$control[Il1b_control$Treatment=="maurum"])
+shapiro.test(Tnf_control$control[Tnf_control$Treatment=="bbs"])
+shapiro.test(Tnf_control$control[Tnf_control$Treatment=="maurum"])
+
+bartlett.test(control ~ Treatment=="bbs", Il6_control)
+bartlett.test(control ~ Treatment=="maurum", Il6_control)
+bartlett.test(control ~ Treatment=="bbs", Il4_control)
+bartlett.test(control ~ Treatment=="maurum", Il4_control)
+# shapiro's not normal but bartlett is normal
+bartlett.test(control ~ Treatment=="bbs", Il1b_control)
+bartlett.test(control ~ Treatment=="maurum", Il1b_control)
+bartlett.test(control ~ Treatment=="bbs", Tnf_control)
+bartlett.test(control ~ Treatment=="maurum", Tnf_control)
+```
+## Statistical Analysis: ANOVA and Post-Hocs 
+```{r}
+Il6control_aov <- aov(control ~ Treatment * Condition, data = Il6_control)
+summary(Il6control_aov)
+# Since this there is significance we need to run a post-hoc, Fisher's LSD, Lowry likes this test since it's less conservative like Tukey's
+Il6control_LSD <- LSD.test(Il6control_aov, "Condition", p.adj = "none")
+Il6control_LSD
+
+lsd_Il6control <- pairwise.t.test(Il6_control$control, interaction(Il6_control$Condition, Il6_control$Treatment), p.adjust.method = "none") 
+
+# Good visual of post-hocs, for Lowry if he requests it 
+as.data.frame(lsd_Il6control$p.value) %>%
+    kbl(caption= "Fisher LSD p-value: compare condition and treatment for Maurum dataset % of control")%>% kable_classic()
+
+Il4control_aov <-aov(control ~ Treatment * Condition, data = Il4_control)
+summary(Il4control_aov)
+
+Il1bcontrol_aov <-aov(control ~ Treatment * Condition, data = Il1b_control)
+summary(Il1bcontrol_aov)
+
+Tnfcontrol_aov <- aov(control ~ Treatment * Condition, data = Tnf_control)
+summary(Tnfcontrol_aov)
+```
+## Figures and Saving Files 
+```{r}
+Il6_control$Condition <- as.factor(Il6_control$Condition)
+Il6_control$Treatment <- as.factor(Il6_control$Treatment)
+Il6_control$Group <- factor(Il6_control$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+fig_Il6control <- Il6_control %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(control)),
+    mean = mean(control, na.rm = TRUE),
+    sd = sd(control, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+max_y_control <- max(fig_Il6control$mean + fig_Il6control$se) #formatting for asterisk
+bracket_y_control <- max_y_control + 10 #formatting for asterisk
+bracket_bottom_control <- max_y_control + 5 #formating for asterisk
+star_y_control <- max_y_control + 11 #formatting for asterisk
+
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951")
+
+Il6control_plot <- ggplot(data = fig_Il6control, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+   scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+     annotate("segment", x = 1, xend = 2, y = bracket_y_control, yend = bracket_y_control, linewidth = 0.5) +
+     annotate("segment", x = 1, xend = 1, y = bracket_bottom_control, yend = bracket_y_control, linewidth = 0.5) +
+     annotate("segment", x = 2, xend = 2, y = bracket_bottom_control, yend = bracket_y_control, linewidth = 0.5) +
+     annotate("text", x = 1.5, y = star_y_control, label = "*", size = 10, fontface = "bold") +
+  
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 22),
+    legend.text = element_text(size = 18),
+    legend.key.width = unit(1.2, "cm"),
+    legend.key.height = unit(0.8, "cm")
+  ) +
+  ggtitle(expression(italic(Il6))) +
+  xlab("") +
+  ylab(expression(atop(" Relative hippocampal " * italic(Il6) * " mRNA Expression", "% of BBS/HC control")))
+      #"(" * 2^{-Delta * Delta * C[q]} * " Values)"))) #this axis label is not for publication, Dr. Lowry's decision 
+Il6control_plot
+   
+
+fig_Il4control <- Il4_control %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(control)),
+    mean = mean(control, na.rm = TRUE),
+    sd = sd(control, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+Il4control_plot <- ggplot(data = fig_Il4control, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+   scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+  
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 20),
+    legend.text = element_text(size = 18),
+    legend.key.width = unit(1.5, "cm"),
+    legend.key.height = unit(0.9, "cm")
+  ) +
+  ggtitle(expression(italic(Il4))) +
+  xlab("") +
+   ylab(expression(atop(" Relative hippocampal " * italic(Il4) * " mRNA Expression", "% of BBS/HC control")))
+Il4control_plot    
+
+
+Il1b_control$Condition <- as.factor(Il1b_control$Condition)
+Il1b_control$Treatment <- as.factor(Il1b_control$Treatment)
+Il1b_control$Group <- factor(Il1b_control$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))    
+
+fig_Il1bcontrol <- Il1b_control %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(control)),
+    mean = mean(control, na.rm = TRUE),
+    sd = sd(control, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+Il1bcontrol_plot <- ggplot(data = fig_Il1bcontrol, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+   scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+  
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 14),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Il1b))) +
+  xlab("") +
+   ylab(expression(atop(" Relative hippocampal " * italic(Il1b) * " mRNA Expression", "% of BBS/HC control")))
+Il1bcontrol_plot
+
+Tnf_control$Condition <- as.factor(Tnf_control$Condition)
+Tnf_control$Treatment <- as.factor(Tnf_control$Treatment)
+Tnf_control$Group <- factor(Tnf_control$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+
+fig_Tnfcontrol <- Tnf_control %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(control)),
+    mean = mean(control, na.rm = TRUE),
+    sd = sd(control, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+
+Tnfcontrol_plot <- ggplot(data = fig_Tnfcontrol, aes (x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+   scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 18),
+    axis.title.y = element_text(size = 20),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 14),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Tnf))) +
+  xlab("") +
+ ylab(expression(atop(" Relative hippocampal " * italic(Tnf) * " mRNA Expression", "% of BBS/HC control")))
+Tnfcontrol_plot
+
+maurum_genes_control <- ggarrange(Il6control_plot, Il4control_plot,
+                             Il1bcontrol_plot, Tnfcontrol_plot,
+                             ncol = 2, nrow = 2,
+                             labels = c("A","B","C","D"),
+                             widths = c(1,1),
+                             heights = c(0.25,0.25),
+                             font.label = list(size = 30, face = "bold"),
+                             common.legend = TRUE,
+                             legend = "right")
+
+# merge plots and save
+maurum_genes_control
+ggsave(maurum_genes_control, filename = "Maurum_data/R_figures/maurum_inflammatory_control.jpeg", device = "jpeg", dpi = 600, width = 20, height = 15)
+
+ggsave(
+  filename = "Maurum_Data/R_figures/maurum_inflammatory_control.svg",
+  plot = maurum_genes_control,
+  device = svglite::svglite,
+  units = "in",
+  width = 20,
+  height = 15
+)
+```
+################################################################################
+
+# Il6, Il4, Tnf expression- Choroid Plexus; Il1b had technical problems and only one plate amplified
+################################################################################
+## Importing gene expression data from Excel #####################
+```{r}
+Il6_cp<- read_excel("Maurum_data/CP/Il6_cp.xlsx")
+Il4_cp<- read_excel("Maurum_data/CP/Il4_cp.xlsx")
+Tnf_cp<- read_excel("Maurum_data/CP/Tnf_cp.xlsx")
+```
+## Statistical Analysis: Grubbs, Sharpio's, and Bartlett's
+```{r}
+grubbs.test(Il6_cp$mRNA[Il6_cp$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il6_cp$mRNA[Il6_cp$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il4_cp$mRNA[Il4_cp$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il4_cp$mRNA[Il4_cp$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Tnf_cp$mRNA[Tnf_cp$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Tnf_cp$mRNA[Tnf_cp$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+
+shapiro.test(Il6_cp$mRNA[Il6_cp$Treatment=="bbs"])
+shapiro.test(Il6_cp$mRNA[Il6_cp$Treatment=="maurum"])
+shapiro.test(Il4_cp$mRNA[Il4_cp$Treatment=="bbs"])
+shapiro.test(Il4_cp$mRNA[Il4_cp$Treatment=="maurum"])
+# not normal p-value = 0.04723
+shapiro.test(Tnf_cp$mRNA[Tnf_cp$Treatment=="bbs"])
+shapiro.test(Tnf_cp$mRNA[Tnf_cp$Treatment=="maurum"])
+
+bartlett.test(mRNA ~ Treatment=="bbs", Il6_cp)
+bartlett.test(mRNA ~ Treatment=="maurum", Il6_cp)
+bartlett.test(mRNA ~ Treatment=="bbs", Il4_cp)
+bartlett.test(mRNA ~ Treatment=="maurum", Il4_cp)
+bartlett.test(mRNA ~ Treatment=="bbs", Tnf_cp)
+bartlett.test(mRNA ~ Treatment=="maurum", Tnf_cp)
+```
+## Statistical Analysis: ANOVA and Post-Hocs
+```{r}
+Il6_cp_aov <- aov(mRNA ~ Treatment * Condition, data = Il6_cp)
+summary(Il6_cp_aov)
+# Since this there is significance we need to run a post-hoc, Fisher's LSD, Lowry likes this test since it's less conservative like Tukey's
+Il6_cp_LSD <- LSD.test(Il6_cp_aov, "Condition", p.adj = "none")
+Il6_cp_LSD
+lsd_Il6_cp <- pairwise.t.test(Il6_cp$mRNA, interaction(Il6_cp$Condition, Il6_cp$Treatment), p.adjust.method = "none") 
+# Good visual of post-hocs, for Lowry if he requests it 
+as.data.frame(lsd_Il6_cp$p.value) %>%
+kbl(caption= "Fisher LSD p-value: compare condition and treatment for Maurum dataset")%>% kable_classic()
+
+Il4_cp_aov <-aov(mRNA ~ Treatment * Condition, data = Il4_cp)
+summary(Il4_cp_aov)
+
+
+Tnf_cp_aov <- aov(mRNA ~ Treatment * Condition, data = Tnf_cp)
+summary(Tnf_cp_aov)
+```
+## Figures and Saving Files 
+```{r}
+Il6_cp$Condition <- as.factor(Il6_cp$Condition)
+Il6_cp$Treatment <- as.factor(Il6_cp$Treatment)
+Il6_cp$Group <- factor(Il6_cp$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+fig_Il6cp <- Il6_cp %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(mRNA)),
+    mean = mean(mRNA, na.rm = TRUE),
+    sd = sd(mRNA, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+max_y <- max(fig_Il6cp$mean + fig_Il6cp$se) #formatting for asterisk
+bracket_y <- max_y + 0.80 #formatting for asterisk
+bracket_bottom <- max_y + 0.60 #formating for asterisk
+star_y <- max_y + 0.90 #formatting for asterisk
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951")
+
+Il6_cp_plot <- ggplot(data = fig_Il6cp, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+  scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+     annotate("segment", x = 1, xend = 2, y = bracket_y, yend = bracket_y, linewidth = 0.5) +
+     annotate("segment", x = 1, xend = 1, y = bracket_bottom, yend = bracket_y, linewidth = 0.5) +
+     annotate("segment", x = 2, xend = 2, y = bracket_bottom, yend = bracket_y, linewidth = 0.5) +
+     annotate("text", x = 1.5, y = star_y, label = "**", size = 8, fontface = "bold") +
+  
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 25),
+    axis.title.y = element_text(size = 23),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 40),
+    legend.text = element_text(size = 30),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Il6))) +
+  xlab("") +
+  ylab(expression(atop(" Relative choroid plexus " * italic(Il6) * " mRNA Expression")))
+      #"(" * 2^{-Delta * Delta * C[q]} * " Values)")))
+Il6_cp_plot
+   
+
+Il4_cp$Condition <- as.factor(Il4_cp$Condition)
+Il4_cp$Treatment <- as.factor(Il4_cp$Treatment)
+Il4_cp$Group <- factor(Il4_cp$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+fig_Il4cp <- Il4_cp %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(mRNA)),
+    mean = mean(mRNA, na.rm = TRUE),
+    sd = sd(mRNA, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+Il4_cp_plot <- ggplot(data = fig_Il4cp, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+  scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+  
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 25),
+    axis.title.y = element_text(size = 23),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 40),
+    legend.text = element_text(size = 30),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Il4))) +
+  xlab("") +
+  ylab(expression(atop(" Relative choroid plexus " * italic(Il4) * " mRNA Expression")))
+      #"(" * 2^{-Delta * Delta * C[q]} * " Values)")))
+Il4_cp_plot    
+    
+
+Tnf_cp$Condition <- as.factor(Tnf_cp$Condition)
+Tnf_cp$Treatment <- as.factor(Tnf_cp$Treatment)
+Tnf_cp$Group <- factor(Tnf_cp$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+
+fig_Tnfcp <- Tnf_cp %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(mRNA)),
+    mean = mean(mRNA, na.rm = TRUE),
+    sd = sd(mRNA, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+
+Tnf_cp_plot <- ggplot(data = fig_Tnfcp, aes (x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+ scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 25),
+    axis.title.y = element_text(size = 23),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 40),
+    legend.text = element_text(size = 30),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Tnf))) +
+  xlab("") +
+  ylab(expression(atop(" Relative choroid plexus " * italic(Tnf) * " mRNA Expression")))
+      #"(" * 2^{-Delta * Delta * C[q]} * " Values)")))
+Tnf_cp_plot
+
+maurum_cp_genes <- ggarrange(Il6_cp_plot, Il4_cp_plot,
+                             Tnf_cp_plot,
+                             ncol = 4, nrow = 2,
+                             labels = c("A","B","C"),
+                             widths = c(1,1),
+                             heights = c(0.25,0.25),
+                             font.label = list(size = 30, face = "bold"),
+                             common.legend = TRUE,
+                             legend = "right")
+
+# merge plots and save
+maurum_cp_genes
+ggsave(maurum_cp_genes, filename = "Maurum_data/R_figures/maurum_cp_inflammatory.jpeg", device = "jpeg", dpi = 600, width = 30, height = 15)
+
+ggsave(
+  filename = "Maurum_Data/R_figures/maurum_cp_inflammatory.svg",
+  plot = maurum_cp_genes,
+  device = svglite::svglite,
+  units = "in",
+  width = 20,
+  height = 15
+)
+```
+## Importing % of control data from Excel ########################
+```{r}
+Il6_cp_control<- read_excel("Maurum_data/CP/Il6_cp_control.xlsx")
+Il4_cp_control<- read_excel("Maurum_data/CP/Il4_cp_control.xlsx")
+Tnf_cp_control<- read_excel("Maurum_data/CP/Tnf_cp_control.xlsx")
+```
+## Statistical Analysis: Grubbs, Sharpio's, and Bartlett's 
+```{r}
+grubbs.test(Il6_cp_control$control[Il6_cp_control$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il6_cp_control$control[Il6_cp_control$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il4_cp_control$control[Il4_cp_control$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il4_cp_control$control[Il4_cp_control$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Tnf_cp_control$control[Tnf_cp_control$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Tnf_cp_control$control[Tnf_cp_control$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+
+shapiro.test(Il6_cp_control$control[Il6_control$Treatment=="bbs"])
+# not normal, but bartlett's is normal  p-value = 0.01904
+shapiro.test(Il6_cp_control$control[Il6_control$Treatment=="maurum"])
+shapiro.test(Il4_cp_control$control[Il4_control$Treatment=="bbs"])
+shapiro.test(Il4_cp_control$control[Il4_control$Treatment=="maurum"])
+shapiro.test(Tnf_control$control[Tnf_control$Treatment=="bbs"])
+shapiro.test(Tnf_control$control[Tnf_control$Treatment=="maurum"])
+
+bartlett.test(control ~ Treatment=="bbs", Il6_control)
+bartlett.test(control ~ Treatment=="maurum", Il6_control)
+bartlett.test(control ~ Treatment=="bbs", Il4_control)
+bartlett.test(control ~ Treatment=="maurum", Il4_control)
+bartlett.test(control ~ Treatment=="bbs", Tnf_control)
+bartlett.test(control ~ Treatment=="maurum", Tnf_control)
+```
+## Statistical Analysis: ANOVA and Post-Hocs
+```{r}
+Il6_cp_control_aov <- aov(control ~ Treatment * Condition, data = Il6_cp_control)
+summary(Il6_cp_control_aov)
+# Since this there is significance we need to run a post-hoc, Fisher's LSD, Lowry likes this test since it's less conservative like Tukey's
+Il6_cp_control_LSD <- LSD.test(Il6_cp_control_aov, "Condition", p.adj = "none")
+Il6_cp_control_LSD
+
+lsd_Il6_cp_control <- pairwise.t.test(Il6_cp_control$control, interaction(Il6_cp_control$Condition, Il6_cp_control$Treatment), p.adjust.method = "none") 
+
+# Good visual of post-hocs, for Lowry if he requests it 
+as.data.frame(lsd_Il6_cp_control$p.value) %>%
+    kbl(caption= "Fisher LSD p-value: compare condition and treatment for Maurum dataset % of control")%>% kable_classic()
+
+Il4_cp_control_aov <-aov(control ~ Treatment * Condition, data = Il4_cp_control)
+summary(Il4_cp_control_aov)
+
+
+Tnf_cp_control_aov <- aov(control ~ Treatment * Condition, data = Tnf_cp_control)
+summary(Tnf_cp_control_aov)
+```
+## Figures and Saving Files
+```{r}
+Il6_cp_control$Condition <- as.factor(Il6_cp_control$Condition)
+Il6_cp_control$Treatment <- as.factor(Il6_cp_control$Treatment)
+Il6_cp_control$Group <- factor(Il6_cp_control$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+fig_Il6_cp_control <- Il6_cp_control %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(control)),
+    mean = mean(control, na.rm = TRUE),
+    sd = sd(control, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+max_y <- max(fig_Il6_cp_control$mean + fig_Il6_cp_control$se)
+range_y <- max(fig_Il6_cp_control$mean + fig_Il6_cp_control$se) - min(fig_Il6_cp_control$mean)
+
+max_y <- max(fig_Il6_cp_control$mean + fig_Il6_cp_control$se) #formatting for asterisk
+bracket_y <- max_y + 0.15 * range_y  #formatting for asterisk
+bracket_bottom <- max_y + 0.05 * range_y #formating for asterisk
+star_y <- max_y + 0.18 * range_y #formatting for asterisk
+
+
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951")
+
+Il6_cp_control_plot <- ggplot(data = fig_Il6_cp_control, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+   scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.20))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+     annotate("segment", x = 1, xend = 2, y = bracket_y, yend = bracket_y, linewidth = 0.5) +
+     annotate("segment", x = 1, xend = 1, y = bracket_bottom, yend = bracket_y, linewidth = 0.5) +
+     annotate("segment", x = 2, xend = 2, y = bracket_bottom, yend = bracket_y, linewidth = 0.5) +
+     annotate("text", x = 1.5, y = star_y, label = "**", size = 8, fontface = "bold") +
+  
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 25),
+    axis.title.y = element_text(size = 23),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 40),
+    legend.text = element_text(size = 30),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Il6))) +
+  xlab("") +
+  ylab(expression(atop(" Relative choroid plexus " * italic(Il6) * " mRNA Expression", "% of BBS/HC control")))
+Il6_cp_control_plot
+   
+Il4_cp_control$Condition <- as.factor(Il4_cp_control$Condition)
+Il4_cp_control$Treatment <- as.factor(Il4_cp_control$Treatment)
+Il4_cp_control$Group <- factor(Il4_cp_control$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+fig_Il4_cp_control <- Il4_cp_control %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(control)),
+    mean = mean(control, na.rm = TRUE),
+    sd = sd(control, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+Il4_cp_control_plot <- ggplot(data = fig_Il4_cp_control, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+  scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 25),
+    axis.title.y = element_text(size = 23),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 40),
+    legend.text = element_text(size = 30),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Il4))) +
+  xlab("") +
+  ylab(expression(atop(" Relative choroid plexus " * italic(Il4) * " mRNA Expression", "% of BBS/HC control")))
+Il4_cp_control_plot    
+    
+
+Tnf_cp_control$Condition <- as.factor(Tnf_cp_control$Condition)
+Tnf_cp_control$Treatment <- as.factor(Tnf_cp_control$Treatment)
+Tnf_cp_control$Group <- factor(Tnf_cp_control$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+
+fig_Tnf_cp_control <- Tnf_cp_control %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(control)),
+    mean = mean(control, na.rm = TRUE),
+    sd = sd(control, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+
+Tnf_cp_control_plot <- ggplot(data = fig_Tnf_cp_control, aes (x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+   scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.14))
+  ) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 25),
+    axis.title.y = element_text(size = 23),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 25,
+      margin = margin(b = 10)
+    ),
+    plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+    
+    legend.title = element_text(size = 40),
+    legend.text = element_text(size = 30),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")
+  ) +
+  ggtitle(expression(italic(Tnf))) +
+  xlab("") +
+ ylab(expression(atop(" Relative choroid plexus " * italic(Tnf) * " mRNA Expression", "% of BBS/HC control")))
+Tnf_cp_control_plot
+
+maurum_cp_genes_control <- ggarrange(Il6_cp_control_plot, Il4_cp_control_plot,
+                             Tnf_cp_control_plot,
+                             ncol = 2, nrow = 2,
+                             labels = c("A","B","C","D"),
+                             widths = c(1,1),
+                             heights = c(0.25,0.25),
+                             font.label = list(size = 30, face = "bold"),
+                             common.legend = TRUE,
+                             legend = "right")
+
+# merge plots and save
+maurum_cp_genes_control
+ggsave(maurum_cp_genes_control, filename = "Maurum_data/R_figures/maurum_cp_inflammatory_control.jpeg", device = "jpeg", dpi = 600, width = 20, height = 15)
+
+ggsave(
+  filename = "Maurum_Data/R_figures/maurum_cp_inflammatory_control.svg",
+  plot = maurum_cp_genes_control,
+  device = svglite::svglite,
+  units = "in",
+  width = 20,
+  height = 15
+)
+```
+
+##############################################################################
+################################################################################ 
+
+# Cd169 expression and % of control - R.hippocampus 
+##############################################################################
+## Importing relative gene expression and % of control dataset from Excel
+```{r}
+Cd169<- read_excel("Maurum_data/R.Hippocampus/Cd169.xlsx")
+Cd169_control<- read_excel("Maurum_data/R.Hippocampus/Cd169_control.xlsx")
+```
+## Statistical Analysis: Grubbs, Sharpio's, and Bartlett's
+```{r}
+grubbs.test(Cd169$mRNA[Cd169$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Cd169$mRNA[Cd169$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Cd169_control$control[Cd169_control$Treatment=="bbs"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Cd169_control$control[Cd169_control$Treatment=="maurum"], type = 10, opposite = F, two.sided = F)
+
+shapiro.test(Cd169$mRNA[Cd169$Treatment=="bbs"])
+shapiro.test(Cd169$mRNA[Cd169$Treatment=="maurum"])
+shapiro.test(Cd169_control$control[Cd169_control$Treatment=="bbs"])
+shapiro.test(Cd169_control$control[Cd169_control$Treatment=="maurum"])
+
+bartlett.test(mRNA ~ Treatment=="bbs", Cd169)
+bartlett.test(mRNA ~ Treatment=="maurum", Cd169)
+bartlett.test(control ~ Treatment=="bbs", Cd169_control)
+bartlett.test(control ~ Treatment=="maurum", Cd169_control)
+```
+## Statisical Analysis: ANOVA and Post-Hocs
+```{r}
+Cd169_aov <- aov(mRNA ~ Treatment * Condition, data = Cd169)
+summary(Cd169_aov)
+
+Cd169control_aov <- aov(control ~ Treatment * Condition, data = Cd169_control)
+summary(Cd169control_aov)
+
+#So close to p>0.05!!!
+```
+
+## Figures and Saving Files
+```{r}
+### Relative gene expression ###
+Cd169$Condition <- as.factor(Cd169$Condition)
+Cd169$Treatment <- as.factor(Cd169$Treatment)
+Cd169$Group <- factor(Cd169$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+
+fig_Cd169 <- Cd169 %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(mRNA)),
+    mean = mean(mRNA, na.rm = TRUE),
+    sd = sd(mRNA, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951")
+
+Cd169_plot <- ggplot(data = fig_Cd169, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+   scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(expand = c(0, 0)) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+   theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 25),
+    axis.title.y = element_text(size = 23),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(hjust = 0.5, size = 25, face = "italic"),
+    legend.title = element_text(size = 30),
+    legend.text = element_text(size = 25),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")) +
+  ggtitle("") +
+  xlab("") +
+  ylab(expression(atop(" Relative " * italic(Cd169) * " mRNA Expression")))
+      #"(" * 2^{-Delta * Delta * C[q]} * " Values)")))
+Cd169_plot
+
+### % to Control ###
+Cd169_control$Condition <- as.factor(Cd169_control$Condition)
+Cd169_control$Treatment <- as.factor(Cd169_control$Treatment)
+Cd169_control$Group <- factor(Cd169_control$Group, levels = c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS"))
+
+
+fig_Cd169control <- Cd169_control %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarise(
+    n = sum(!is.na(control)),
+    mean = mean(control, na.rm = TRUE),
+    sd = sd(control, na.rm = TRUE),
+    se = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951")
+
+Cd169control_plot <- ggplot(data = fig_Cd169control, aes(x = Group, y = mean, fill = Group)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) +
+  scale_fill_manual(
+    name = "Group",
+    values = stoodis_colors, 
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum")*"/HC"),
+      expression(italic("M. aurum")*"/IS")
+    )
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank()
+  ) +
+  scale_y_continuous(expand = c(0, 0)) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = 0.1,
+    color = "black",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white", colour = "white"),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 25),
+    axis.title.y = element_text(size = 23),
+    axis.line = element_line(linewidth = 0.75, colour = "black", linetype = 1),
+    plot.title = element_text(hjust = 0.5, size = 25, face = "italic"),
+    legend.title = element_text(size = 30),
+    legend.text = element_text(size = 25),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.6, "cm")) +
+  ggtitle("") +
+  xlab("") +
+   ylab(expression(atop(" Relative hippocampal " * italic(Cd169) * " mRNA Expression", "% of BBS/HC control")))
+Cd169control_plot
+
+#maurum_Cd169 <- ggarrange(Cd169_plot, Cd169control_plot,
+                             #ncol = 2, nrow = 1,
+                             #labels = c("A","B"),
+                             #widths = c(1,1),
+                             #heights = c(0.25,0.25),
+                             #font.label = list(size = 50, face = "bold"),
+                             #common.legend = TRUE,
+                             #legend = "right")
+#maurum_Cd169- we need to separate these figures for the publication 
+
+ggsave(Cd169control_plot, filename = "Maurum_data/R_figures/maurum_cd169_control.jpeg", device = "jpeg", dpi = 600, width = 20, height = 12)
+
+ggsave(
+  filename = "Maurum_Data/R_figures/maurum_cd169_control.svg",
+  plot = Cd169control_plot,
+  device = svglite::svglite,
+  units = "in",
+  width = 20,
+  height = 12
+)
+
+ggsave(Cd169_plot, filename = "Maurum_data/R_figures/maurum_cd169.jpeg", device = "jpeg", dpi = 600, width = 20, height = 12)
+
+ggsave(
+  filename = "Maurum_Data/R_figures/maurum_cd169.svg",
+  plot = Cd169_plot,
+  device = svglite::svglite,
+  units = "in",
+  width = 20,
+  height = 12
+)
+```
+
+
+
+################################################################################
+# Linear Regression R. hippocampi Il6 vs. JSE Behavior (Condition and Treatment), R.hippocampi Cd169 vs. JSE Behavior (Condition and Treatment), Choroid Plexus Il6 vs. JSE Behavior
+################################################################################
+## Importing linear correlation data from Excel
+```{r}
+Il6_JSE_condition<- read_excel("Maurum_data/Regression/Il6_JSE_condition.xlsx")
+Il6_JSE_treatment<- read_excel("Maurum_data/Regression/Il6_JSE_treatment.xlsx")
+Cd169_JSE_condition<- read_excel("Maurum_data/Regression/Cd169_JSE_condition.xlsx")
+Cd169_JSE_treatment<- read_excel("Maurum_data/Regression/Cd169_JSE_treatment.xlsx")
+Il6_JSE_cp_condition <- read_excel("Maurum_data/Regression/Il6_JSE_cp_condition.xlsx")
+Il6_JSE_cp_treatment <- read_excel("Maurum_data/Regression/Il6_JSE_cp_treatment.xlsx")
+```
+## Statistical Analysis: Grubbs and Shapiro's
+```{r}
+grubbs.test(Il6_JSE_condition$mRNA[Il6_JSE_condition$group=="BBS/HC"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il6_JSE_condition$mRNA[Il6_JSE_condition$group=="BBS/IS"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il6_JSE_condition$JSE[Il6_JSE_condition$group=="BBS/HC"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il6_JSE_condition$JSE[Il6_JSE_condition$group=="BBS/IS"], type = 10, opposite = F, two.sided = F)
+
+grubbs.test(Il6_JSE_treatment$mRNA[Il6_JSE_treatment$group=="M. aurum/HC"],type = 10, opposite = F, two.sided = F)
+grubbs.test(Il6_JSE_treatment$mRNA[Il6_JSE_treatment$group=="M. aurum/IS"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il6_JSE_treatment$JSE[Il6_JSE_treatment$group=="M. aurum/HC"], type = 10, opposite = F, two.sided = F)
+grubbs.test(Il6_JSE_treatment$JSE[Il6_JSE_treatment$group=="M. aurum/IS"], type = 10, opposite = F, two.sided = F)
+
+shapiro.test(Il6_JSE_condition$mRNA[Il6_JSE_condition$group=="BBS/HC"])
+shapiro.test(Il6_JSE_condition$mRNA[Il6_JSE_condition$group=="BBS/IS"])
+shapiro.test(Il6_JSE_condition$JSE[Il6_JSE_condition$group=="BBS/HC"])
+shapiro.test(Il6_JSE_condition$JSE[Il6_JSE_condition$group=="BBS/IS"])
+
+shapiro.test(Il6_JSE_treatment$mRNA[Il6_JSE_treatment$group=="M. aurum/HC"])
+shapiro.test(Il6_JSE_treatment$mRNA[Il6_JSE_treatment$group=="M. aurum/IS"])
+# not normal p-value = 0.02234
+shapiro.test(Il6_JSE_treatment$JSE[Il6_JSE_treatment$group=="M. aurum/HC"])
+shapiro.test(Il6_JSE_treatment$JSE[Il6_JSE_treatment$group=="M. aurum/IS"])
+```
+
+## Statistical Analysis: Pearson's Correlation 
+```{r}
+Il6_model <- lm(JSE ~ mRNA, data = Il6_JSE_condition)
+summary(Il6_model)
+
+Il6_model2 <- lm(JSE ~ mRNA, data = Il6_JSE_treatment)
+summary (Il6_model2)
+
+Cd169_model <- lm(JSE ~ mRNA, data = Cd169_JSE_condition)
+summary (Cd169_model)
+
+Cd169_model2 <- lm(JSE ~ mRNA, data = Cd169_JSE_treatment)
+summary (Cd169_model2)
+
+Il6_cp_model <- lm(JSE ~ mRNA, data = Il6_JSE_cp_condition)
+summary(Il6_cp_model)
+
+Il6_cp_model2 <- lm(JSE ~ mRNA, data = Il6_JSE_cp_treatment)
+summary (Il6_cp_model2)
+```
+## Figures and Saving Files- R. Hippocampi Il6 vs. JSE Condition and Treatment 
+```{r}
+# R-squared for Il6 vs. JSE condition 
+r2_Il6c <- summary(Il6_model)$r.squared
+# p-value for Il6 vs. JSE condition  
+pval_Il6c <- summary(Il6_model)$coefficients[2, 4]
+# slope for Il6 vs. JSE condition 
+slope_Il6c <- summary(Il6_model)$coefficients[2, 1]
+
+# R-squared for Il6 vs. JSE treatment 
+r2_Il6t <- summary(Il6_model2)$r.squared
+# p-value for Il6 vs. JSE treatment 
+pval_Il6t <- summary(Il6_model2)$coefficients[2, 4]
+# slope for Il6 vs. JSE treatment 
+slope_Il6t <- summary(Il6_model2)$coefficients[2, 1]
+
+cat("Condition model:\n")
+cat("R² =", round(r2_Il6c, 3), "\n") 
+cat("p-value =", signif(pval_Il6c, 3), "\n")
+cat("slope =", round(slope_Il6c, 3), "\n")
+
+cat("Treatment model:\n")
+cat("R² =", round(r2_Il6t, 3), "\n") 
+cat("p-value =", signif(pval_Il6t, 3), "\n")
+cat("slope =", round(slope_Il6t, 3), "\n")
+
+# Shared factor levels
+all_groups <- c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS")
+
+# Colors
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951"
+)
+
+# Prepare condition data
+Il6_JSE_condition <- Il6_JSE_condition %>%
+  dplyr::mutate(
+    Group = factor(group, levels = all_groups),
+    mRNA = as.numeric(mRNA),
+    JSE = as.numeric(JSE)
+  )
+
+# Prepare treatment data
+Il6_JSE_treatment <- Il6_JSE_treatment %>%
+  dplyr::mutate(
+    Group = factor(group, levels = all_groups),
+    mRNA = as.numeric(mRNA),
+    JSE = as.numeric(JSE)
+  )
+
+# Panel A
+Il6_JSE_condition_plot <- ggplot(Il6_JSE_condition, aes(x = mRNA, y = JSE, color = Group)) +
+  geom_point(
+    size = 3,
+    alpha = 0.9
+  ) +
+   scale_color_manual(
+    name = "Group",
+    values = stoodis_colors,
+    breaks = all_groups,
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum") * "/HC"),
+      expression(italic("M. aurum") * "/IS")
+    ),
+    drop = FALSE
+  ) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 1,
+    linetype = "solid"
+  ) +
+  stat_cor(
+    aes(group = 1),
+    method = "pearson",
+    label.x = max(Il6_JSE_condition$mRNA, na.rm = TRUE),
+    label.y = max(Il6_JSE_condition$JSE, na.rm = TRUE),
+    size = 5,
+    hjust = 1,
+    color = "black"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 20, color = "black"),
+    axis.title = element_text(size = 18, color = "black"),
+    axis.line = element_line(linewidth = 0.8),
+    legend.position = "none",
+    plot.title = element_text(size = 18, hjust = 0.5)
+  ) +
+     xlab(expression(atop("Relative hippocampal " * italic(Il6) * " mRNA Expression"))) +
+  ylab(expression(atop("Time Exploring Juvenile", "% of BBS/HC control")))
+
+# Panel B
+Il6_JSE_treatment_plot <- ggplot(Il6_JSE_treatment, aes(x = mRNA, y = JSE, color = Group)) +
+  geom_point(
+    size = 3,
+    alpha = 0.9
+  ) +
+  scale_color_manual(
+    name = "Group",
+    values = stoodis_colors,
+    breaks = all_groups,
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum") * "/HC"),
+      expression(italic("M. aurum") * "/IS")
+    ),
+    drop = FALSE
+  ) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 1,
+    linetype = "solid"
+  ) +
+  stat_cor(
+    aes(group = 1),
+    method = "pearson",
+    label.x = max(Il6_JSE_treatment$mRNA, na.rm = TRUE),
+    label.y = max(Il6_JSE_treatment$JSE, na.rm = TRUE),
+    size = 5,
+    hjust = 1,
+    color = "black"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 20, color = "black"),
+    axis.title = element_text(size = 18, color = "black"),
+    axis.line = element_line(linewidth = 0.8),
+    legend.position = "none",
+    plot.title = element_text(size = 18, hjust = 0.5)
+  ) +
+     xlab(expression(atop("Relative hippocampal " * italic(Il6) * " mRNA Expression"))) +
+  ylab(expression(atop("Time Exploring Juvenile", "% of BBS/HC control")))
+
+
+# Arrange the two Il6 panels first
+Il6_panel_plots <- ggarrange(
+  Il6_JSE_condition_plot,
+  Il6_JSE_treatment_plot,
+  ncol = 2,
+  nrow = 1,
+  labels = c("A", "B"),
+  widths = c(1, 1),
+  font.label = list(size = 50, face = "bold")
+)
+
+# Dummy legend data
+legend_Il6_df <- data.frame(
+  x = 1:4,
+  y = 1:4,
+  Group = factor(all_groups, levels = all_groups)
+)
+
+# Dummy legend plot
+legend_Il6_plot <- ggplot(legend_Il6_df, aes(x = x, y = y, color = Group)) +
+  geom_point(size = 4) +
+  scale_color_manual(
+    name = "Group",
+    values = stoodis_colors,
+    breaks = all_groups,
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum") * "/HC"),
+      expression(italic("M. aurum") * "/IS")
+    ),
+    drop = FALSE
+  ) +
+  theme_classic() +
+  theme(
+    legend.title = element_text(size = 20),
+    legend.text = element_text(size = 18),
+    legend.position = "right"
+  )
+
+shared_Il6_legend <- cowplot::get_legend(legend_Il6_plot)
+
+# Combine panels + legend
+Il6_JSE_plots <- ggarrange(
+  Il6_panel_plots,
+  shared_Il6_legend,
+  ncol = 2,
+  widths = c(1, 0.22)
+)
+
+# Save JPEG
+ggsave(
+  filename = "Maurum_data/R_figures/maurum_Il6_JSE_plots.jpeg",
+  plot = Il6_JSE_plots,
+  device = "jpeg",
+  dpi = 600,
+  width = 20,
+  height = 10
+)
+
+# Save SVG
+ggsave(
+  filename = "Maurum_Data/R_figures/maurum_Il6_JSE_plots.svg",
+  plot = Il6_JSE_plots,
+  device = svglite::svglite,
+  units = "in",
+  width = 20,
+  height = 10
+)
+```
+## Figures and Saving Files- R. Hipocampi Cd169 vs. JSE Condition and Treatment 
+```{r}
+# R-squared for Cd169 vs. JSE condition 
+r2_Cd169c <- summary(Cd169_model)$r.squared
+pval_Cd169c <- summary(Cd169_model)$coefficients[2, 4]
+slope_Cd169c <- summary(Cd169_model)$coefficients[2, 1]
+
+# R-squared for Cd169 vs. JSE treatment 
+r2_Cd169t <- summary(Cd169_model2)$r.squared
+pval_Cd169t <- summary(Cd169_model2)$coefficients[2, 4]
+slope_Cd169t <- summary(Cd169_model2)$coefficients[2, 1]
+
+cat("Condition model:\n")
+cat("R² =", round(r2_Cd169c, 3), "\n")
+cat("p-value =", signif(pval_Cd169c, 3), "\n")
+cat("slope =", round(slope_Cd169c, 3), "\n\n")
+
+cat("Treatment model:\n")
+cat("R² =", round(r2_Cd169t, 3), "\n")
+cat("p-value =", signif(pval_Cd169t, 3), "\n")
+cat("slope =", round(slope_Cd169t, 3), "\n")
+
+# Shared factor levels
+all_groups <- c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS")
+
+# Colors
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951"
+)
+
+# Prepare condition data
+Cd169_JSE_condition <- Cd169_JSE_condition %>%
+  dplyr::mutate(
+    Group = factor(group, levels = all_groups),
+    mRNA = as.numeric(mRNA),
+    JSE = as.numeric(JSE)
+  )
+
+# Prepare treatment data
+Cd169_JSE_treatment <- Cd169_JSE_treatment %>%
+  dplyr::mutate(
+    Group = factor(group, levels = all_groups),
+    mRNA = as.numeric(mRNA),
+    JSE = as.numeric(JSE)
+  )
+
+# Panel A
+Cd169_JSE_condition_plot <- ggplot(
+  Cd169_JSE_condition,
+  aes(x = mRNA, y = JSE, color = Group)
+) +
+  geom_point(
+    size = 3,
+    alpha = 0.9
+  ) +
+  scale_color_manual(
+    name = "Group",
+    values = stoodis_colors,
+    breaks = all_groups,
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum") * "/HC"),
+      expression(italic("M. aurum") * "/IS")
+    ),
+    drop = FALSE
+  ) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 1,
+    linetype = "solid",
+    alpha = 0.8
+  ) +
+  stat_cor(
+    aes(group = 1),
+    method = "pearson",
+    label.x = Inf,
+    label.y = Inf,
+    hjust = 1.1,
+    vjust = 1.5,
+    size = 5,
+    color = "black"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 20, color = "black"),
+    axis.title = element_text(size = 18, color = "black"),
+    axis.line = element_line(linewidth = 0.8),
+    legend.position = "none",
+    plot.title = element_text(size = 18, hjust = 0.5)
+  ) +
+  xlab(expression(atop("Relative hippocampal " * italic(Cd169) * " mRNA Expression"))) +
+  ylab(expression(atop("Time Exploring Juvenile", "% of BBS/HC control")))
+
+# Panel B
+Cd169_JSE_treatment_plot <- ggplot(
+  Cd169_JSE_treatment,
+  aes(x = mRNA, y = JSE, color = Group)
+) +
+  geom_point(
+    size = 3,
+    alpha = 0.9
+  ) +
+  scale_color_manual(
+    name = "Group",
+    values = stoodis_colors,
+    breaks = all_groups,
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum") * "/HC"),
+      expression(italic("M. aurum") * "/IS")
+    ),
+    drop = FALSE
+  ) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 1,
+    linetype = "solid",
+    alpha = 0.8
+  ) +
+  stat_cor(
+    aes(group = 1),
+    method = "pearson",
+    label.x = Inf,
+    label.y = Inf,
+    hjust = 1.1,
+    vjust = 1.5,
+    size = 5,
+    color = "black"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 20, color = "black"),
+    axis.title = element_text(size = 18, color = "black"),
+    axis.line = element_line(linewidth = 0.8),
+    legend.position = "none",
+    plot.title = element_text(size = 18, hjust = 0.5)
+  ) +
+  xlab(expression(atop("Relative hippocampal " * italic(Cd169) * " mRNA Expression"))) +
+  ylab(expression(atop("Time Exploring Juvenile", "% of BBS/HC control")))
+
+# Dummy legend data
+legend_df <- data.frame(
+  x = 1:4,
+  y = 1:4,
+  Group = factor(all_groups, levels = all_groups)
+)
+
+# Dummy legend plot
+legend_plot <- ggplot(legend_df, aes(x = x, y = y, color = Group)) +
+  geom_point(size = 4) +
+  scale_color_manual(
+    name = "Group",
+    values = stoodis_colors,
+    breaks = all_groups,
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum") * "/HC"),
+      expression(italic("M. aurum") * "/IS")
+    ),
+    drop = FALSE
+  ) +
+  theme_classic() +
+  theme(
+    legend.title = element_text(size = 20),
+    legend.text = element_text(size = 18),
+    legend.position = "right",
+    legend.key.height = unit(0.8, "cm"),
+    legend.key.width = unit(1, "cm")
+  )
+
+shared_legend <- cowplot::get_legend(legend_plot)
+
+# Arrange panels
+panel_plots <- ggarrange(
+  Cd169_JSE_condition_plot,
+  Cd169_JSE_treatment_plot,
+  ncol = 2,
+  nrow = 1,
+  labels = c("A", "B"),
+  widths = c(1, 1),
+  font.label = list(size = 50, face = "bold")
+)
+
+# Combine panels + legend
+Cd169_JSE_plots <- ggarrange(
+  panel_plots,
+  shared_legend,
+  ncol = 2,
+  widths = c(1, 0.22)
+)
+
+Cd169_JSE_plots
+
+# Save JPEG
+ggsave(
+  filename = "Maurum_data/R_figures/maurum_Cd169_JSE_plots.jpeg",
+  plot = Cd169_JSE_plots,
+  device = "jpeg",
+  dpi = 600,
+  width = 20,
+  height = 10
+)
+
+# Save SVG
+ggsave(
+  filename = "Maurum_Data/R_figures/maurum_Cd169_JSE_plots.svg",
+  plot = Cd169_JSE_plots,
+  device = svglite::svglite,
+  units = "in",
+  width = 20,
+  height = 10
+)
+```
+## Figures and Saving Files- CP Il6 vs. JSE Condition and Treatment 
+```{r}
+# R-squared for Il6 vs. JSE condition for linear regression model
+r2_Il6c_cp <- summary(Il6_cp_model)$r.squared
+# p-value for Cd169 vs. JSE condition for linear regressions model 
+pval_Il6c_cp <- summary(Il6_cp_model)$coefficients[2, 4]
+# slope for Cd169 vs. JSE condition
+slope_Il6c_cp <- summary(Il6_cp_model)$coefficients[2, 1]
+
+# R-squared for Il6 vs. JSE treatment 
+r2_Il6t_cp <- summary(Il6_cp_model2)$r.squared
+# p-value for Cd169 vs. JSE treatment
+pval_Il6t_cp <- summary(Il6_cp_model2)$coefficients[2, 4]
+# slope for Cd169 vs. JSE treatment
+slope_Il6t_cp <- summary(Il6_cp_model2)$coefficients[2, 1]
+
+
+cat("Condition model:\n")
+cat("R² =", round(r2_Il6c_cp, 3), "\n") 
+cat("p-value =", signif(pval_Il6c_cp, 3), "\n")
+cat("slope =", round(slope_Il6c_cp, 3), "\n")
+
+cat("Treatment model:\n")
+cat("R² =", round(r2_Il6t_cp, 3), "\n") 
+cat("p-value =", signif(pval_Il6t_cp, 3), "\n")
+cat("slope =", round(slope_Il6t_cp, 3), "\n")
+
+# Shared factor levels
+all_groups <- c("BBS/HC", "BBS/IS", "M. aurum/HC", "M. aurum/IS")
+
+# Colors
+stoodis_colors <- c(
+  "BBS/HC" = "#B3E1F0",
+  "BBS/IS" = "#148CBA",
+  "M. aurum/HC" = "#98E0B1",
+  "M. aurum/IS" = "#21A951"
+)
+
+# Prepare condition data
+Il6_JSE_cp_condition <- Il6_JSE_cp_condition %>%
+  dplyr::mutate(
+    Group = factor(group, levels = all_groups),
+    mRNA = as.numeric(mRNA),
+    JSE = as.numeric(JSE)
+  )
+
+# Prepare treatment data
+Il6_JSE_cp_treatment <- Il6_JSE_cp_treatment %>%
+  dplyr::mutate(
+    Group = factor(group, levels = all_groups),
+    mRNA = as.numeric(mRNA),
+    JSE = as.numeric(JSE)
+  )
+
+# Panel A
+Il6_JSE_cp_condition_plot <- ggplot(Il6_JSE_cp_condition, aes(x = mRNA, y = JSE, color = Group)) +
+  geom_point(
+    size = 3,
+    alpha = 0.9
+  ) +
+   scale_color_manual(
+    name = "Group",
+    values = stoodis_colors,
+    breaks = all_groups,
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum") * "/HC"),
+      expression(italic("M. aurum") * "/IS")
+    ),
+    drop = FALSE
+  ) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 1,
+    linetype = "solid"
+  ) +
+  stat_cor(
+    aes(group = 1),
+    method = "pearson",
+    label.x = max(Il6_JSE_cp_condition$mRNA, na.rm = TRUE),
+    label.y = max(Il6_JSE_cp_condition$JSE, na.rm = TRUE),
+    size = 5,
+    hjust = 1,
+    color = "black"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 20, color = "black"),
+    axis.title = element_text(size = 18, color = "black"),
+    axis.line = element_line(linewidth = 0.8),
+    legend.position = "none",
+    plot.title = element_text(size = 18, hjust = 0.5)
+  ) +
+     xlab(expression(atop("Relative choroid plexus " * italic(Il6) * " mRNA Expression"))) +
+  ylab(expression(atop("Time Exploring Juvenile", "% of BBS/HC control")))
+
+# Panel B
+Il6_JSE_cp_treatment_plot <- ggplot(Il6_JSE_cp_treatment, aes(x = mRNA, y = JSE, color = Group)) +
+  geom_point(
+    size = 3,
+    alpha = 0.9
+  ) +
+  scale_color_manual(
+    name = "Group",
+    values = stoodis_colors,
+    breaks = all_groups,
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum") * "/HC"),
+      expression(italic("M. aurum") * "/IS")
+    ),
+    drop = FALSE
+  ) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 1,
+    linetype = "solid"
+  ) +
+  stat_cor(
+    aes(group = 1),
+    method = "pearson",
+    label.x = max(Il6_JSE_cp_treatment$mRNA, na.rm = TRUE),
+    label.y = max(Il6_JSE_cp_treatment$JSE, na.rm = TRUE),
+    size = 5,
+    hjust = 1,
+    color = "black"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 20, color = "black"),
+    axis.title = element_text(size = 18, color = "black"),
+    axis.line = element_line(linewidth = 0.8),
+    legend.position = "none",
+    plot.title = element_text(size = 18, hjust = 0.5)
+  ) +
+     xlab(expression(atop("Relative choroid plexus " * italic(Il6) * " mRNA Expression"))) +
+  ylab(expression(atop("Time Exploring Juvenile", "% of BBS/HC control")))
+
+
+# Arrange the two Il6 panels first
+Il6_cp_panel_plots <- ggarrange(
+  Il6_JSE_cp_condition_plot,
+  Il6_JSE_cp_treatment_plot,
+  ncol = 2,
+  nrow = 1,
+  labels = c("A", "B"),
+  widths = c(1, 1),
+  font.label = list(size = 50, face = "bold")
+)
+
+# Dummy legend data
+legend_Il6_cp_df <- data.frame(
+  x = 1:4,
+  y = 1:4,
+  Group = factor(all_groups, levels = all_groups)
+)
+
+# Dummy legend plot
+legend_Il6_cp_plot <- ggplot(legend_Il6_cp_df, aes(x = x, y = y, color = Group)) +
+  geom_point(size = 4) +
+  scale_color_manual(
+    name = "Group",
+    values = stoodis_colors,
+    breaks = all_groups,
+    labels = c(
+      "BBS/HC",
+      "BBS/IS",
+      expression(italic("M. aurum") * "/HC"),
+      expression(italic("M. aurum") * "/IS")
+    ),
+    drop = FALSE
+  ) +
+  theme_classic() +
+  theme(
+    legend.title = element_text(size = 20),
+    legend.text = element_text(size = 18),
+    legend.position = "right"
+  )
+
+shared_Il6_cp_legend <- cowplot::get_legend(legend_Il6_cp_plot)
+
+# Combine panels + legend
+Il6_JSE_cp_plots <- ggarrange(
+  Il6_cp_panel_plots,
+  shared_Il6_cp_legend,
+  ncol = 2,
+  widths = c(1, 0.22)
+)
+
+# Save JPEG
+ggsave(
+  filename = "Maurum_data/R_figures/maurum_Il6_JSE_cp_plots.jpeg",
+  plot = Il6_JSE_cp_plots,
+  device = "jpeg",
+  dpi = 600,
+  width = 20,
+  height = 10
+)
+
+# Save SVG
+ggsave(
+  filename = "Maurum_Data/R_figures/maurum_Il6_JSE_cp_plots.svg",
+  plot = Il6_JSE_cp_plots,
+  device = svglite::svglite,
+  units = "in",
+  width = 20,
+  height = 10
+)
+```
+
